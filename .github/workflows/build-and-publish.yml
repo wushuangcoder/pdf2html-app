@@ -17,19 +17,22 @@ jobs:
         with: 
           fetch-depth: 0  # 确保能获取到 tag 和完整历史 
 
-      - name: 创建 GitHub Release 
-        env: 
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
-        run: | 
-          TAG="${GITHUB_REF#refs/tags/}" 
-          # 获取打 tag 的 commit 的完整提交信息（第一行为标题，后续为正文） 
-          COMMIT_MESSAGE=$(git log -1 --pretty=format:%B "$GITHUB_SHA") 
+      - name: 更新 GitHub CLI 到最新版本
+        run: sudo apt-get update && sudo apt-get install -y gh
+
+      - name: 创建 GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # 获取打 tag 的 commit 的完整提交信息（第一行为标题，后续为正文）
+          COMMIT_MESSAGE=$(git log -1 --pretty=format:%B "$GITHUB_SHA")
           
-          # 使用 printf 安全处理多行文本 
-          printf "%s" "$COMMIT_MESSAGE" > release-notes.txt 
+          # 使用 printf 安全处理多行文本
+          printf "%s" "$COMMIT_MESSAGE" > release-notes.txt
           
-          gh release create "$TAG" \ 
-            --title "Release $TAG" \ 
+          gh release create "$TAG" \
+            --title "Release $TAG" \
             --notes-file release-notes.txt 
 
   build-and-push-docker-to-aliyun: 
