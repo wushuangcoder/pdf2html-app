@@ -44,9 +44,9 @@ jobs:
 
       - name: 登录阿里云容器镜像仓库 
         run: | 
-          echo "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}" | \ 
-          docker login --username "${{ secrets.ALIYUN_REGISTRY_USER }}" \ 
-                       --password-stdin "${{ secrets.ALIYUN_REGISTRY }}" 
+          echo "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}" | \
+          docker login --username "${{ secrets.ALIYUN_REGISTRY_USER }}" \
+                       --password-stdin "${{ secrets.ALIYUN_REGISTRY }}"
 
       - name: 提取版本标签 
         id: get_version 
