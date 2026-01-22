@@ -31,6 +31,15 @@ jobs:
           # 使用 printf 安全处理多行文本
           printf "%s" "$COMMIT_MESSAGE" > release-notes.txt
           
+          # 先检查并删除现有的相同标签Release（如果存在）
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists, deleting it..."
+            gh release delete "$TAG" --yes
+            # 等待几秒确保删除完成
+            sleep 3
+          fi
+          
+          # 创建新的Release
           gh release create "$TAG" \
             --title "Release $TAG" \
             --notes-file release-notes.txt 
