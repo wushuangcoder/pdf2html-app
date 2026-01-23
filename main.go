@@ -187,7 +187,7 @@ func convertPdfToHtml(pdfPath, htmlPath string) error {
 		"--printing", "1",
 		"--quiet", "1",
 		pdfPath,
-		htmlPath,
+		filepath.Base(htmlPath),
 	)
 
 	var stdout, stderr bytes.Buffer
