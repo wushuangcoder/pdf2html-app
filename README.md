@@ -5,7 +5,7 @@
 ## 功能特点
 
 - 支持从网络URL转换PDF文件为HTML
-- 分页返回HTML内容，每个页面包含页码和HTML内容
+- 直接返回完整的HTML文件，包含所有页面和嵌入的资源
 - 使用Docker容器化，环境统一
 - 转换完成后自动清理临时文件，不占用空间
 
@@ -26,20 +26,7 @@ curl "http://localhost:8080/pdf-to-html?pdf_url=https://example.com/path/to/your
 
 ### 响应格式
 
-```json
-{
-  "pages": [
-    {
-      "page": 1,
-      "content": "<html>...</html>"
-    },
-    {
-      "page": 2,
-      "content": "<html>...</html>"
-    }
-  ]
-}
-```
+直接返回完整的HTML文件，包含所有页面和嵌入的资源。响应头的Content-Type设置为text/html，浏览器会直接显示转换后的HTML内容。
 
 ## 技术栈
 
@@ -202,6 +189,7 @@ pdf2htmlEX \
 ## 注意事项
 - 确保输出目录存在且有写权限。
 - 若 PDF 受密码保护，请使用 `-o` 或 `-u` 提供密码。
+- 分页使用#pf1
 --- 
 
 如需进一步调试，可暂时关闭 `--quiet 1` 查看详细日志。
