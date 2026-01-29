@@ -5,13 +5,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-) /*
+)
+
+// 时间戳格式常量
+const TimeFormat = "2006-01-02 15:04:05" /*
 Usage: pdf2htmlEX [options] <input.pdf> [<output.html>]
 
 	-f,--first-page <int>         first page to convert (default: 1)
@@ -81,9 +86,19 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/pdf-to-html", func(c *gin.Context) {
+		// 记录请求开始
+		startTime := time.Now()
+		fmt.Printf("[%s] Received request: pdf_url=%s\n", startTime.Format(TimeFormat), c.Query("pdf_url"))
+
 		// 从查询参数中获取pdf_url
 		pdfUrl := c.Query("pdf_url")
-		if pdfUrl == "" {
+		fixedPdfUrl, err := fixPlusInURL(pdfUrl)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pdf_url"})
+			return
+		}
+		if fixedPdfUrl == "" {
+			fmt.Printf("[%s] Error: pdf_url parameter is required\n", time.Now().Format(TimeFormat))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "pdf_url parameter is required"})
 			return
 		}
@@ -92,42 +107,56 @@ func main() {
 		semaphore <- struct{}{}
 		defer func() {
 			<-semaphore
+			fmt.Printf("[%s] Request completed in %v\n", time.Now().Format(TimeFormat), time.Since(startTime))
 		}()
 
 		// 创建临时目录 - 在系统临时目录内，确保隔离性
 		tempDir, err := os.MkdirTemp("", "pdf2html-")
 		if err != nil {
+			fmt.Printf("[%s] Error creating temp directory: %v\n", time.Now().Format(TimeFormat), err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create temp directory: %v", err)})
 			return
 		}
+		fmt.Printf("[%s] Created temp directory: %s\n", time.Now().Format(TimeFormat), tempDir)
 		defer os.RemoveAll(tempDir)
 
 		// 下载PDF文件
 		pdfPath := filepath.Join(tempDir, "input.pdf")
-		if err := downloadFile(pdfPath, pdfUrl); err != nil {
+		fmt.Printf("[%s] Starting to download PDF from: %s\n", time.Now().Format(TimeFormat), pdfUrl)
+		if err := downloadFile(pdfPath, fixedPdfUrl); err != nil {
+			fmt.Printf("[%s] Error downloading PDF: %v\n", time.Now().Format(TimeFormat), err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download PDF: %v", err)})
 			return
 		}
+		fmt.Printf("[%s] PDF downloaded successfully to: %s\n", time.Now().Format(TimeFormat), pdfPath)
 
 		// 校验下载的文件是否为合法 PDF
+		fmt.Printf("[%s] Validating PDF file: %s\n", time.Now().Format(TimeFormat), pdfPath)
 		if err := validatePDF(pdfPath); err != nil {
+			fmt.Printf("[%s] Error validating PDF: %v\n", time.Now().Format(TimeFormat), err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Downloaded file is not a valid PDF: %v", err)})
 			return
 		}
+		fmt.Printf("[%s] PDF validation successful\n", time.Now().Format(TimeFormat))
 
 		// 使用pdf2htmlEX转换PDF为HTML，启用分页功能
 		baseHtmlPath := filepath.Join(tempDir, "output.html")
+		fmt.Printf("[%s] Starting PDF to HTML conversion\n", time.Now().Format(TimeFormat))
 		if err := convertPdfToHtml(pdfPath, baseHtmlPath); err != nil {
+			fmt.Printf("[%s] Error converting PDF to HTML: %v\n", time.Now().Format(TimeFormat), err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to convert PDF to HTML: %v", err)})
 			return
 		}
+		fmt.Printf("[%s] PDF to HTML conversion successful\n", time.Now().Format(TimeFormat))
 
 		// 直接返回转换后的HTML文件
 		outputHtmlPath := filepath.Join(tempDir, "output.html")
 		if _, err := os.Stat(outputHtmlPath); os.IsNotExist(err) {
+			fmt.Printf("[%s] Error: Output HTML file not found: %s\n", time.Now().Format(TimeFormat), outputHtmlPath)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find output HTML file"})
 			return
 		}
+		fmt.Printf("[%s] Returning HTML file: %s\n", time.Now().Format(TimeFormat), outputHtmlPath)
 
 		// 设置响应头，指定文件类型为HTML
 		c.Header("Content-Type", "text/html")
@@ -192,6 +221,15 @@ func validatePDF(path string) error {
 		return fmt.Errorf("file is not a valid PDF (starts with: %q)", string(fullBuf[:n]))
 	}
 	return nil
+}
+
+func fixPlusInURL(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	u.Path = strings.ReplaceAll(u.Path, "+", "%2B")
+	return u.String(), nil
 }
 
 // 使用pdf2htmlEX转换PDF为HTML
