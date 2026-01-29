@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -88,16 +87,10 @@ func main() {
 	r.GET("/pdf-to-html", func(c *gin.Context) {
 		// 记录请求开始
 		startTime := time.Now()
-		fmt.Printf("[%s] Received request: pdf_url=%s\n", startTime.Format(TimeFormat), c.Query("pdf_url"))
+		rawQuery := c.Request.URL.RawQuery
+		rawPdfUrl := extractRawPdfUrl(rawQuery)
 
-		// 从查询参数中获取pdf_url
-		pdfUrl := c.Query("pdf_url")
-		fixedPdfUrl, err := fixPlusInURL(pdfUrl)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid pdf_url"})
-			return
-		}
-		if fixedPdfUrl == "" {
+		if rawPdfUrl == "" {
 			fmt.Printf("[%s] Error: pdf_url parameter is required\n", time.Now().Format(TimeFormat))
 			c.JSON(http.StatusBadRequest, gin.H{"error": "pdf_url parameter is required"})
 			return
@@ -122,8 +115,8 @@ func main() {
 
 		// 下载PDF文件
 		pdfPath := filepath.Join(tempDir, "input.pdf")
-		fmt.Printf("[%s] Starting to download PDF from: %s\n", time.Now().Format(TimeFormat), pdfUrl)
-		if err := downloadFile(pdfPath, fixedPdfUrl); err != nil {
+		fmt.Printf("[%s] Starting to download PDF from: %s\n", time.Now().Format(TimeFormat), rawPdfUrl)
+		if err := downloadFile(pdfPath, rawPdfUrl); err != nil {
 			fmt.Printf("[%s] Error downloading PDF: %v\n", time.Now().Format(TimeFormat), err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to download PDF: %v", err)})
 			return
@@ -223,13 +216,13 @@ func validatePDF(path string) error {
 	return nil
 }
 
-func fixPlusInURL(rawURL string) (string, error) {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return "", err
+func extractRawPdfUrl(rawQuery string) string {
+	for _, part := range strings.Split(rawQuery, "&") {
+		if strings.HasPrefix(part, "pdf_url=") {
+			return part[8:]
+		}
 	}
-	u.Path = strings.ReplaceAll(u.Path, "+", "%2B")
-	return u.String(), nil
+	return ""
 }
 
 // 使用pdf2htmlEX转换PDF为HTML
