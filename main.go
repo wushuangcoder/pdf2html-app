@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 ) /*
@@ -108,6 +109,12 @@ func main() {
 			return
 		}
 
+		// 校验下载的文件是否为合法 PDF
+		if err := validatePDF(pdfPath); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Downloaded file is not a valid PDF: %v", err)})
+			return
+		}
+
 		// 使用pdf2htmlEX转换PDF为HTML，启用分页功能
 		baseHtmlPath := filepath.Join(tempDir, "output.html")
 		if err := convertPdfToHtml(pdfPath, baseHtmlPath); err != nil {
@@ -133,11 +140,26 @@ func main() {
 
 // 下载文件
 func downloadFile(filepath string, url string) error {
-	resp, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	// 👇 关键：伪装成 Chrome 浏览器
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/pdf,*/*;q=0.9")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+	client := &http.Client{Timeout: 300 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
 
 	out, err := os.Create(filepath)
 	if err != nil {
@@ -147,6 +169,29 @@ func downloadFile(filepath string, url string) error {
 
 	_, err = io.Copy(out, resp.Body)
 	return err
+}
+
+// validatePDF 检查文件是否以 %PDF 开头
+func validatePDF(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open file for validation: %w", err)
+	}
+	defer f.Close()
+
+	buf := make([]byte, 4)
+	if _, err := io.ReadFull(f, buf); err != nil {
+		return fmt.Errorf("failed to read file header: %w", err)
+	}
+
+	if !bytes.HasPrefix(buf, []byte("%PDF")) {
+		// 读取前 200 字节用于错误诊断
+		f.Seek(0, 0)
+		fullBuf := make([]byte, 200)
+		n, _ := io.ReadFull(f, fullBuf)
+		return fmt.Errorf("file is not a valid PDF (starts with: %q)", string(fullBuf[:n]))
+	}
+	return nil
 }
 
 // 使用pdf2htmlEX转换PDF为HTML
